@@ -13,6 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r}
 library(tidyverse)
 library(rvest)
+library(purrr)
 ```
 
 ```{r}
@@ -110,6 +111,152 @@ dynamite_reviews = bind_rows(
 
 dynamite_reviews
 ```
+## iteration_and_listcols
 
+lets look at a list
 
+```{r}
+l = list(
+  vec_numeric = 5:8,
+  mat         = matrix(1:8, 2, 4),
+  vec_logical = c(TRUE, FALSE),
+  summary     = summary(rnorm(1000)))
+
+l[[3]]
+```
+
+## loops!
+let's write a `for` loop
+
+```{r}
+list_norms = 
+  list(
+    a = rnorm(20, 3, 1),
+    b = rnorm(20, 0, 5),
+    c = rnorm(20, 10, .2),
+    d = rnorm(20, -3, 1)
+  )
+
+mean_and_sd = function(x) {
+  
+  if (!is.numeric(x)) {
+    stop("Argument x should be numeric")
+  } else if (length(x) == 1) {
+    stop("Cannot be computed for length 1 vectors")
+  }
+  
+  mean_x = mean(x)
+  sd_x = sd(x)
+
+  tibble(
+    mean = mean_x, 
+    sd = sd_x
+  )
+}
+```
+
+```{r}
+output=vector("list",length = 4)
+
+for (i in 1:4){
+  output[[i]]=mean_and_sd(list_norms[[i]])
+}
+output
+```
+
+## can we map
+```{r}
+map(list_norms,mean_and_sd)
+```
+
+```{r}
+map_dbl(list_norms,median)
+map_df(list_norms,mean_and_sd)
+```
+
+## list columns ... 
+```{r}
+listcol_df = 
+  tibble(
+    name = c("a", "b", "c", "d"),
+    samp = list_norms
+  )
+
+listcol_df = 
+  listcol_df %>% 
+  mutate(summary = map(samp, mean_and_sd))
+
+```
+
+## Nested data
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728", "USC00519397", "USS0023B17S"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(
+      id, 
+      USW00094728 = "CentralPark_NY", 
+      USC00519397 = "Waikiki_HA",
+      USS0023B17S = "Waterhole_WA"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+
+let's nest within weather stations
+```{r}
+weather_nest = 
+  nest(weather_df, data = date:tmin)
+
+weather_nest
+```
+
+### a little lm function
+```{r}
+weather_lm = function(df) {
+  lm(tmax ~ tmin, data = df)
+}
+
+## a loop
+map(weather_nest[["data"]],weather_lm)
+```
+
+Let’s use mutate to fit this model, and to store the result in the same dataframe.
+```{r}
+weather_nest<-
+weather_nest %>% 
+  mutate(
+    models=map(data,weather_lm)
+  )
+
+weather_nest[[4]][[1]]
+```
+
+```{r}
+weather_nest %>% 
+  unnest(data)
+```
+
+## Revisiting Napoleon
+```{r}
+url_base = "https://www.amazon.com/product-reviews/B00005JNBQ/ref=cm_cr_arp_d_viewopt_rvwer?ie=UTF8&reviewerType=avp_only_reviews&sortBy=recent&pageNumber="
+vec_urls = str_c(url_base, 1:5)
+
+napoleon_reviews<-
+  tibble(
+    page=1:5,
+    page_url=str_c(url_base,page)
+  ) %>% 
+  mutate(
+    reviews=map(page_url,read_page_reviews)
+  ) %>% 
+  select(-page_url)
+
+napoleon_reviews %>% 
+  unnest(reviews)
+```
 
